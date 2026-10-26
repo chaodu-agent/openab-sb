@@ -1,7 +1,12 @@
-# Reference architecture — an agent drives the browser on a computer at home
+# Use case — Muse browses from a home residential IP, not its built-in browser
 
-This page wires three pieces together so that a cloud agent (Muse is the example) can use
-the **browser on a computer at home** — a Mac mini, for instance — through `openab-sb`:
+An agent like Muse has a built-in browser. That browser runs in the agent's own environment, so
+every site sees that environment's network address, and it holds none of your logins. For some
+tasks that is the wrong browser: the site wants a residential address, or the task needs a
+session you already have at home.
+
+`openab-sb` is what lets Muse use the browser on a computer at home instead — a Mac mini, for
+instance — even though the two cannot reach each other:
 
 ```
 Muse (cloud agent)  ──HTTPS + Bearer──►  openab-sb  ◄──WSS (home dials out)──  macmini
@@ -10,29 +15,34 @@ Muse (cloud agent)  ──HTTPS + Bearer──►  openab-sb  ◄──WSS (home
                                                                                 + Chromium
 ```
 
-It is a reference, not a requirement. Everything it relies on is described in
+This page is a reference for that one use case, not a requirement. It builds on
 [`README.md`](../README.md), [`SOUTHBOUND-CONTRACT.md`](SOUTHBOUND-CONTRACT.md) and
-[`adr/multi-computer.md`](adr/multi-computer.md); this page only shows how they fit for one
-use case.
+[`adr/multi-computer.md`](adr/multi-computer.md).
 
-## Why this shape
+## The problem
 
-The agent and the home computer cannot reach each other:
+|  | Muse's built-in browser | The browser on the home computer |
+|---|---|---|
+| Network address seen by sites | Muse's environment | Your home **residential IP** |
+| Cookies and logged-in sessions | none | the home browser profile's |
+| Reachable from Muse | yes | **no** — no inbound port, behind NAT |
 
-- The home computer has no inbound port and is not reachable from the agent's network.
-- The agent runs in the cloud and cannot enter the home network.
+The row that blocks the use case is the last one. The home computer can only dial out, and Muse
+cannot enter the home network.
 
-Both can dial out. So the home computer dials the switchboard (southbound), the agent calls
-the switchboard (northbound), and the switchboard relays MCP between them. Nothing at home
-listens for the agent.
+## Where sb comes in
 
-**Why the home browser rather than the agent's own.** A tool call is executed on the home
-computer, so the browser it drives:
+Both sides can dial out, so neither needs to listen:
 
-- leaves from the home **residential IP**, not a cloud address;
-- has the home browser profile's **cookies and logged-in sessions**.
+- the home computer dials the switchboard (southbound, `/vm/attach`) and serves MCP on that
+  socket;
+- Muse calls the switchboard (northbound, `POST /mcp/<computer>`) like any remote MCP server;
+- the switchboard relays between them, and its per-caller allowlist decides which tools Muse may
+  use — here, the browser tools only.
 
-That is the benefit, and also the risk — see [Trust and risk](#trust-and-risk).
+A tool call is then executed on the home computer, so the browser it drives leaves from the home
+IP and carries that profile's cookies and sessions. That is the benefit, and also the risk — see
+[Trust and risk](#trust-and-risk).
 
 ## Roles
 
@@ -221,3 +231,6 @@ address, and open a site the profile is logged in to.
 - **Not verified here:** this page was assembled from the repository documents and source,
   not from an end-to-end run with Muse. Run the checks in [Verify](#4-verify) before relying
   on it.
+- **Muse's built-in browser is described from the use case, not measured.** The comparison in
+  [The problem](#the-problem) states the motivation; this page did not test what address or
+  sessions Muse's own browser presents.
