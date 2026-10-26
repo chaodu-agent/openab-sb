@@ -192,6 +192,11 @@ Client notes (reported by Muse on 2026-10-26, see [Muse results](#muse-results))
   that allows the port and a timeout above 60 s.
 - The template's `ALLOWED_TOOLS` is an exact-name list, so a tool the server adds later stays
   blocked until it is reviewed.
+- Port 443 is necessary but **not sufficient** for a tailnet-only host. With Muse's default egress
+  proxy the stock template fails in about 0.4 s ("MCP request did not complete"), because that
+  proxy cannot reach a tailnet-only name. With the proxy environment pointed at Muse's tailnet
+  proxy (the egress proxy host, port 3130) the stock template works unchanged: protocol
+  2025-06-18, server `openab-sb 0.2.0`.
 
 ### 4. Verify
 
@@ -249,9 +254,10 @@ address, and open a site the profile is logged in to.
 - **No browser-only profile yet.** `desktop` still includes GUI tools; instance-mcp tracks a
   narrower browser tier in its #45. Until then the switchboard allowlist is the control.
 - **One socket per computer.** A second daemon with the same secret evicts the first (`4002`).
-- **Partly verified.** The path from Muse to the computer was exercised on 2026-10-26 (see
-  [Muse results](#muse-results)). The central claim, that a browser call leaves from the home
-  residential IP, has not been run yet.
+- **Mostly verified.** The path from Muse to the computer, and a browser call that leaves from a
+  different address than Muse's own, were exercised on 2026-10-26 (see [Muse results](#muse-results)).
+  Not shown: that the address is the owner's **residential** one, since Muse could not compare it
+  with the home address.
 - **Muse's built-in browser is described from the use case, not measured.** The comparison in
   [The problem](#the-problem) states the motivation; this page did not test what address or
   sessions Muse's own browser presents.
@@ -277,5 +283,20 @@ Reported by Muse on 2026-10-26, from its connector docs and a live check against
 | Untrusted output | Treated as untrusted data, including home-browser page content |
 
 The computer reported `accessibility=false` in `sys_info`, so `mouse` and `key` would fail on
-permissions there even if policy allowed them. `browser_navigate` to an IP-echo page was **not**
-run.
+permissions there even if policy allowed them.
+
+### Re-run against the switchboard on p1 (2026-10-26)
+
+| Step | Result |
+|---|---|
+| Stock template, `https://p1.<tailnet>.ts.net/mcp/macmini`, port 443 | Works unchanged **through the tailnet proxy**; fails through the default egress proxy (see above) |
+| `tools/list` | 11 tools: `sys_info`, `screenshot`, 8 browser tools, `vm_status`. No `mouse`, `key`, `exec`, `browser_evaluate` |
+| `sys_info` / `vm_status` | macOS 15.7.4, Apple M4, Screen Recording on, Full Disk Access on, Accessibility off; `macmini` attached and ready, max 8 in flight |
+| `mouse` | Refused by switchboard policy as a normal tool result; later calls kept working |
+| IP-echo page | One address returned, **different from Muse's own egress address**. The address itself was withheld on purpose |
+| Persistent profile | A site the profile is signed in to loaded its signed-in interface, with no login wall or captcha. No account details were recorded |
+| Latency | list-tools 0.8 to 1.1 s; `sys_info` 1.1 s; `browser_navigate` 2.7 s (IP-echo), 10.9 s (signed-in site); first manual `initialize` through the proxy 17 s. Nothing over 45 s |
+
+The Mac mini's own egress is on an ISP network (a wireless ISP), not a cloud or datacenter network.
+That supports, but does not prove, that the address is residential: Muse compared the returned
+address with its own, not with the owner's home address.
