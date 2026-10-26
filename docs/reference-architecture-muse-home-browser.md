@@ -57,6 +57,8 @@ This page is about Muse as a **caller** and the Mac mini as the **computer**.
 
 ## Components
 
+> **TODO:** add more agents as callers in the diagram below, each with its own `[[client]]` token and allowlist: **Grok Bot**, **OpenAI Dots** and **Claude Duet**. They are not drawn or verified yet; whether each can add a remote MCP server with a custom `Authorization` header still has to be checked.
+
 ```mermaid
 flowchart LR
     subgraph cloud["Cloud"]
