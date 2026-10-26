@@ -254,10 +254,11 @@ address, and open a site the profile is logged in to.
 - **No browser-only profile yet.** `desktop` still includes GUI tools; instance-mcp tracks a
   narrower browser tier in its #45. Until then the switchboard allowlist is the control.
 - **One socket per computer.** A second daemon with the same secret evicts the first (`4002`).
-- **Mostly verified.** The path from Muse to the computer, and a browser call that leaves from a
-  different address than Muse's own, were exercised on 2026-10-26 (see [Muse results](#muse-results)).
-  Not shown: that the address is the owner's **residential** one, since Muse could not compare it
-  with the home address.
+- **Verified on the PoC, with one caveat.** The path from Muse to the computer, and a browser call that
+  leaves from the Mac mini's network, were exercised on 2026-10-26 (see
+  [Muse results](#muse-results)). The returned address belongs to the same ASN as the Mac mini's own
+  egress and differs from Muse's. "Residential" in the strict sense is an inference from a consumer
+  ISP, not a proof.
 - **Muse's built-in browser is described from the use case, not measured.** The comparison in
   [The problem](#the-problem) states the motivation; this page did not test what address or
   sessions Muse's own browser presents.
@@ -293,10 +294,33 @@ permissions there even if policy allowed them.
 | `tools/list` | 11 tools: `sys_info`, `screenshot`, 8 browser tools, `vm_status`. No `mouse`, `key`, `exec`, `browser_evaluate` |
 | `sys_info` / `vm_status` | macOS 15.7.4, Apple M4, Screen Recording on, Full Disk Access on, Accessibility off; `macmini` attached and ready, max 8 in flight |
 | `mouse` | Refused by switchboard policy as a normal tool result; later calls kept working |
-| IP-echo page | One address returned, **different from Muse's own egress address**. The address itself was withheld on purpose |
+| IP-echo page | One address returned, **different from Muse's own egress address**. The address itself was withheld on purpose. Looked up by Muse: AS18616, Natural Wireless, LLC; hosting, mobile and proxy flags all false |
+| Screenshots | `screenshot` (whole desktop): 2.7 s, JPEG 1920x1080, about 165 KB, intact. `browser_take_screenshot` (viewport): 0.8 s, PNG about 7.5 KB, intact |
 | Persistent profile | A site the profile is signed in to loaded its signed-in interface, with no login wall or captcha. No account details were recorded |
 | Latency | list-tools 0.8 to 1.1 s; `sys_info` 1.1 s; `browser_navigate` 2.7 s (IP-echo), 10.9 s (signed-in site); first manual `initialize` through the proxy 17 s. Nothing over 45 s |
 
-The Mac mini's own egress is on an ISP network (a wireless ISP), not a cloud or datacenter network.
-That supports, but does not prove, that the address is residential: Muse compared the returned
-address with its own, not with the owner's home address.
+The Mac mini's own egress, looked up separately by the operator, is the same network: AS18616, Natural
+Wireless, LLC, a fixed-wireless ISP. So the browser call leaves from the Mac mini's network, and that
+network is consumer ISP egress rather than a cloud or datacenter one. An ASN and organisation do not
+prove a connection is residential in the strictest sense.
+
+## Operating notes (from Muse, 2026-10-26)
+
+- **Tailnet proxy.** A client for a tailnet-only host has to use Muse's tailnet proxy (the egress proxy
+  host, port 3130). The connector descriptor has no proxy setting, so Muse added a small wrapper
+  (`run-p1`) next to the stock client that derives the proxy from `HTTPS_PROXY`, swaps the port to 3130
+  and runs the stock client unchanged. If the runtime stops offering that proxy, the wrapper fails
+  the same way as the default proxy did.
+- **"Always allow" is a network rule, not a credential scope.** The site approval created an allow
+  rule for `tailb836bb.ts.net` and `*.tailb836bb.ts.net` on ports 80 and 443. It lets Muse's sandbox
+  connect; it does not grant a token. The credential is registered for the single host
+  `p1.<tailnet>.ts.net` and is only substituted for that host. The rule can be narrowed in the Muse app
+  under Settings > Permissions; the agent itself cannot change it.
+- **Key rotation.** Rotating the Muse token on the switchboard does not need a new host registration:
+  reconnect the existing connection through the secure API-access flow with the same provider, host,
+  scheme and placement, and enter the new token. Hosts, scheme and placement cannot be changed on a
+  reconnect. The old stored token stops working as soon as the switchboard's verifier changes, and
+  nothing checks the new key at setup, so the first real call is the proof.
+- **Retiring a connection.** Disconnecting a connector in Muse removes its stored token from Muse, but
+  does **not** revoke it on the switchboard. If two connections held the same token value, revoking
+  it means rotating the token on the switchboard and reconnecting the one you keep.
