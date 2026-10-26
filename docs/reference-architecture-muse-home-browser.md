@@ -69,7 +69,7 @@ flowchart LR
     end
 
     subgraph edge["Switchboard host (you run it)"]
-        front["TLS front<br/>cloudflared or tailscale serve"]
+        front["TLS front<br/>tailscale serve (PoC)<br/>or a public tunnel"]
         sb["openab-sb<br/>POST /mcp/macmini<br/>allowlist: browser_* only"]
         front --> sb
     end
@@ -93,7 +93,7 @@ flowchart LR
 | Piece | Runs on | Job |
 |---|---|---|
 | Muse, Grok Bot, OpenAI Dots, Claude Duet | cloud | MCP clients, one `[[client]]` each. Needs to add a remote MCP server by URL with an `Authorization` header |
-| TLS front | switchboard host | Terminates TLS. `cloudflared` when Muse is outside your tailnet; `tailscale serve` only if Muse is on it |
+| TLS front | switchboard host | Terminates TLS. The PoC uses `tailscale serve` (tailnet only), so Muse must reach the tailnet; a public tunnel such as `cloudflared` is the alternative when it cannot |
 | `openab-sb` | switchboard host | Authenticates, picks the computer from the path, applies the per-caller tool allowlist, relays |
 | `oab-instance-mcp` | macmini | Dials the switchboard, serves tools on that socket under one profile |
 | Playwright MCP | macmini | Loopback MCP server driving the browser (`poc/pw-mcp` in instance-mcp) |
@@ -202,9 +202,8 @@ address, and open a site the profile is logged in to.
 
 `openab-sb` binds loopback and needs TLS in front.
 
-- Muse **inside** your tailnet: `tailscale serve --bg https / http://127.0.0.1:8790`.
-- Muse **outside** your tailnet (the usual case for a cloud agent): a public tunnel such as
-  `cloudflared`. The bearer tokens are then the only gate, so keep the generated 256-bit
+- Muse **inside** your tailnet (**the PoC**): `tailscale serve --bg --https=8445 http://127.0.0.1:8796`, giving `https://<host>.<tailnet>.ts.net:8445/mcp/<computer>`. Tailnet only, no Funnel.
+- Muse **outside** your tailnet: a public tunnel such as `cloudflared` (not used in the PoC). The bearer tokens are then the only gate, so keep the generated 256-bit
   tokens, rotate with `SIGHUP`, and keep the allowlist narrow.
 - If Muse only reaches approved addresses, that address is the switchboard's front.
 
