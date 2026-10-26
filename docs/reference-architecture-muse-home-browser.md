@@ -172,13 +172,26 @@ With the packaged installer, put the URL, secret and profile in
 
 ### 3. Muse
 
-Add a remote MCP server with:
+Muse does not take a pasted URL as a native tool. It reaches a remote MCP server through
+Muse-side CLI code run with `muse.exec`, built from its custom-connector scaffold. Register the
+switchboard once through Muse's secure API-access flow (the owner does this):
 
-- URL `https://<switchboard>/mcp/macmini`
-- header `Authorization: Bearer <Muse token>`
+- bare `api_hosts`: the switchboard host. Scheme, credential placement and hosts cannot be
+  changed afterwards; a mistake means a new link and re-entering the key. Moving the switchboard
+  to another host therefore means a **new** connection.
+- credential: the Muse client token, as a bearer header. The model sees only a surrogate; the
+  runtime swaps in the real token on an approved request to a registered host.
 
-Muse must support Streamable HTTP MCP and a custom header. Whether and how a given Muse
-deployment allows that is outside this repository.
+Client notes (reported by Muse on 2026-10-26, see [Muse results](#muse-results)):
+
+- The stock template does `initialize`, then `tools/list` / `tools/call`, over Streamable HTTP.
+  The switchboard answers `initialize` itself, so this should work. A JSON response without SSE
+  is accepted.
+- The stock template refuses any endpoint port other than 443, and fails a call after 45 s of
+  silence. `openab-sb` times most tools out at 60 s. Serve the switchboard on 443, or use a client
+  that allows the port and a timeout above 60 s.
+- The template's `ALLOWED_TOOLS` is an exact-name list, so a tool the server adds later stays
+  blocked until it is reviewed.
 
 ### 4. Verify
 
@@ -186,13 +199,14 @@ deployment allows that is outside this repository.
 # 1. computer attached and ready
 curl -s -H "Authorization: Bearer $MUSE_TOKEN" https://<switchboard>/readyz/macmini -o /dev/null -w '%{http_code}\n'   # 200
 
-# 2. what Muse can see: expect sys_info + the browser_* names, and no mouse/key/exec
+# 2. what Muse can see: expect sys_info, vm_status (always present) and the allowlisted tools,
+#    and no mouse/key/exec
 curl -s -H "Authorization: Bearer $MUSE_TOKEN" -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' https://<switchboard>/mcp/macmini
 
-# 3. a forbidden tool must read as unknown
-#    tools/call name=mouse  → unknown tool
+# 3. a forbidden tool is refused by the switchboard policy
+#    tools/call name=mouse  → text result "tool mouse is not allowed for muse on macmini …"
 ```
 
 Then have Muse call `browser_navigate` to an IP-echo page and compare with your home
@@ -202,7 +216,7 @@ address, and open a site the profile is logged in to.
 
 `openab-sb` binds loopback and needs TLS in front.
 
-- Muse **inside** your tailnet (**the PoC**): `tailscale serve --bg --https=8445 http://127.0.0.1:8796`, giving `https://<host>.<tailnet>.ts.net:8445/mcp/<computer>`. Tailnet only, no Funnel.
+- Muse **inside** your tailnet (**the PoC**): `tailscale serve --bg --https=8445 http://127.0.0.1:8796`, giving `https://<host>.<tailnet>.ts.net:8445/mcp/<computer>`. Tailnet only, no Funnel. Muse reaches it as a client-only tailnet member through its runtime HTTP CONNECT proxy (see [Muse results](#muse-results)), so no public front is needed.
 - Muse **outside** your tailnet: a public tunnel such as `cloudflared` (not used in the PoC). The bearer tokens are then the only gate, so keep the generated 256-bit
   tokens, rotate with `SIGHUP`, and keep the allowlist narrow.
 - If Muse only reaches approved addresses, that address is the switchboard's front.
@@ -235,9 +249,33 @@ address, and open a site the profile is logged in to.
 - **No browser-only profile yet.** `desktop` still includes GUI tools; instance-mcp tracks a
   narrower browser tier in its #45. Until then the switchboard allowlist is the control.
 - **One socket per computer.** A second daemon with the same secret evicts the first (`4002`).
-- **Not verified here:** this page was assembled from the repository documents and source,
-  not from an end-to-end run with Muse. Run the checks in [Verify](#4-verify) before relying
-  on it.
+- **Partly verified.** The path from Muse to the computer was exercised on 2026-10-26 (see
+  [Muse results](#muse-results)). The central claim, that a browser call leaves from the home
+  residential IP, has not been run yet.
 - **Muse's built-in browser is described from the use case, not measured.** The comparison in
   [The problem](#the-problem) states the motivation; this page did not test what address or
   sessions Muse's own browser presents.
+- **Public front untested.** Only the tailnet route was exercised. Whether Muse accepts a
+  Cloudflare certificate was not tested, and a public host would need a new registered connection.
+
+## Muse results
+
+Reported by Muse on 2026-10-26, from its connector docs and a live check against the PoC.
+
+| Question | Answer |
+|---|---|
+| Remote MCP with a bearer header | Yes, via CLI connector code (`muse.exec`), not a native tool. Streamable HTTP, protocol 2025-11-25 / 2025-06-18 / 2025-03-26 |
+| Reach the switchboard | Muse's VM is a **client-only** tailnet member (enrolled 2026-10-03). No TUN: tailnet traffic goes through the runtime HTTP CONNECT proxy, TCP only. No `tailscale serve` or inbound |
+| Hostname allowlist | Authenticated calls are limited to registered `api_hosts`. Only the owner can add one; the model cannot |
+| Non-443 port | Works with a bespoke client (`:8445`, 0.24 s for `tools/list`); the stock template refuses it |
+| TLS | `*.ts.net` certificate accepted with default verification. A Cloudflare certificate was **not** tested |
+| Images | `browser_take_screenshot` (fullPage) about 920 KB in 1.9 s; `screenshot` at scale 2 about 951 KB in 2.9 s; both intact. Muse's own maximum is unknown |
+| Timeouts | Stock template: 45 s, no retry. Bespoke client: 120 s |
+| Tool count | 11 listed: `sys_info`, `screenshot`, 8 browser tools, and `vm_status` (always present). No `mouse`, `key`, `exec`, `browser_evaluate` |
+| Errors | `isError` and JSON-RPC errors surface as text and do not drop the server. `mouse` returned a policy denial, not "unknown tool" |
+| Token | Held in the secure credentials store; the model sees a surrogate. Muse cannot audit its own server-side logs |
+| Untrusted output | Treated as untrusted data, including home-browser page content |
+
+The computer reported `accessibility=false` in `sys_info`, so `mouse` and `key` would fail on
+permissions there even if policy allowed them. `browser_navigate` to an IP-echo page was **not**
+run.
