@@ -57,12 +57,15 @@ This page is about Muse as a **caller** and the Mac mini as the **computer**.
 
 ## Components
 
-> **TODO:** add more agents as callers in the diagram below, each with its own `[[client]]` token and allowlist: **Grok Bot**, **OpenAI Dots** and **Claude Duet**. They are not drawn or verified yet; whether each can add a remote MCP server with a custom `Authorization` header still has to be checked.
+> Each cloud agent below is a separate caller with its own `[[client]]` token and allowlist. Muse is the worked example; **Grok Bot**, **OpenAI Dots** and **Claude Duet** are drawn the same way, but this page has not checked that each can add a remote MCP server with a custom `Authorization` header.
 
 ```mermaid
 flowchart LR
     subgraph cloud["Cloud"]
         muse["Muse agent<br/>remote MCP client<br/>Bearer client token"]
+        grok["Grok Bot<br/>remote MCP client<br/>own Bearer token"]
+        dots["OpenAI Dots<br/>remote MCP client<br/>own Bearer token"]
+        duet["Claude Duet<br/>remote MCP client<br/>own Bearer token"]
     end
 
     subgraph edge["Switchboard host (you run it)"]
@@ -81,12 +84,15 @@ flowchart LR
     end
 
     muse -- "HTTPS, Bearer" --> front
+    grok -- "HTTPS, Bearer" --> front
+    dots -- "HTTPS, Bearer" --> front
+    duet -- "HTTPS, Bearer" --> front
     imcp == "WSS /vm/attach<br/>dialled by macmini<br/>Bearer computer secret" ==> front
 ```
 
 | Piece | Runs on | Job |
 |---|---|---|
-| Muse | cloud | MCP client. Needs to add a remote MCP server by URL with an `Authorization` header |
+| Muse, Grok Bot, OpenAI Dots, Claude Duet | cloud | MCP clients, one `[[client]]` each. Needs to add a remote MCP server by URL with an `Authorization` header |
 | TLS front | switchboard host | Terminates TLS. `cloudflared` when Muse is outside your tailnet; `tailscale serve` only if Muse is on it |
 | `openab-sb` | switchboard host | Authenticates, picks the computer from the path, applies the per-caller tool allowlist, relays |
 | `oab-instance-mcp` | macmini | Dials the switchboard, serves tools on that socket under one profile |
